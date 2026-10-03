@@ -1,0 +1,7 @@
+# Downloaded datasets (Spambase, ~2MB) - never commit
+data/
+
+# Python artifacts
+__pycache__/
+*.pyc
+.venv/
