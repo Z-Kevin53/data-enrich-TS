@@ -1,7 +1,19 @@
-# Downloaded datasets (Spambase, ~2MB) - never commit
+# Downloaded datasets (Spambase ~2MB, CIFAR-100) - never commit
 data/
+
+# Experiment outputs (kept locally + on server; regenerate via run_remote.py)
+results/
+papers/
 
 # Python artifacts
 __pycache__/
 *.pyc
 .venv/
+
+# Local run logs / temp files
+*.log
+_tmp_*
+_ar_run*
+_smoke_*
+smoke_*
+remote_smoke*

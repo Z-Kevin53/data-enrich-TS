@@ -1,72 +1,75 @@
 project_name: data_enrich
-description: Data enrichment strategy optimization on UCI Spambase (find the
-  augmentation that maximizes downstream val_acc from a small labeled seed)
-goal: Maximize validation accuracy of a small MLP by enriching a seed subset
-  of labeled spambase emails with synthetic/oversampled/noisy samples
+description: TS (Teacher-Student) ensemble data augmentation for few-shot learning on
+  CIFAR-100 (CIFAR-FS style 20-class k-shot benchmark); AutoResearch searches the
+  augmentation pipeline and maximizes downstream ProtoNet validation accuracy
+goal: Maximize validation accuracy of a prototypical-network classifier trained on
+  a TS-augmented few-shot CIFAR-100 dataset (5/10-shot seed grown to 40/60 shots
+  per class by teacher-scored student generators)
 target_metric: val_acc
 direction: higher
 constraint:
-  max_time_seconds: 600
+  max_time_seconds: 900
   max_iterations: 50
   metric_direction: higher
   metric_name: val_acc
   metric_threshold: null
 search_space:
-  enrich_methods:
-  - none
-  - synthetic
-  - oversample
-  - noise
-  - hybrid
-  seed_ratios:
-  - 0.15
-  - 0.25
-  - 0.35
-  - 0.5
-  enrich_ratios:
-  - 0.5
-  - 1.0
+  shots:
+  - 5
+  - 10
+  target_shots:
+  - 40
+  - 60
+  n_students:
+  - 2
+  - 3
+  - 4
+  teacher_weights:
   - 2.0
-  noise_stds:
-  - 0.05
-  - 0.1
-  - 0.2
-  learning_rates:
-  - 0.001
-  - 0.005
-  - 0.01
-  batch_sizes:
+  - 3.0
+  - 5.0
+  score_thresholds:
+  - 0.5
+  - 0.6
+  - 0.7
+  aug_iters:
+  - 3
+  - 4
+  - 6
+  candidates_per_source:
+  - 4
+  - 8
+  student_channels:
+  - 32
+  - 64
+  latent_dims:
+  - 8
   - 16
-  - 32
-  - 64
-  hidden_dims:
-  - 32
-  - 64
-  - 128
-  dropout_rates:
-  - 0.0
-  - 0.1
-  - 0.3
-  optimizer_types:
-  - adam
-  - adamw
-  - sgd
-  weight_decay:
-  - 0.0
+  teacher_lrs:
   - 0.001
-  - 0.01
-experiment_file: experiments/enrich_experiment.py
+  - 0.003
+  student_lrs:
+  - 0.001
+  - 0.003
+  student_styles:
+  - jitter
+  - warp
+  - mixed
+  retrain_students:
+  - 0
+  - 1
+experiment_file: experiments/ts_aug_experiment.py
 results_file: results/results.tsv
 paper_output: papers/generated_paper.md
 git_branch: autoresearch/experiment
 research_phases:
 - seed_setup
-- enrichment_search
-- hyperparameter
-- regularization
-- optimization
+- pipeline_search
+- scoring_ensemble
+- selection_threshold
+- augmentation_schedule
 paper_settings:
-  title_prefix: 'AutoResearch: Data Enrichment'
+  title_prefix: 'TS-Aug: Teacher-Student Ensemble Data Augmentation for Few-Shot Learning'
   include_ablation: true
   include_analysis: true
-  format: markdown
+  format: ieee

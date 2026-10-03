@@ -25,6 +25,20 @@ class SearchSpace:
     seed_ratios: List[float] = field(default_factory=lambda: [0.15, 0.25, 0.35, 0.5])
     enrich_ratios: List[float] = field(default_factory=lambda: [0.5, 1.0, 2.0])
     noise_stds: List[float] = field(default_factory=lambda: [0.05, 0.1, 0.2])
+    # TS (Teacher-Student) ensemble augmentation for few-shot learning
+    shots: List[int] = field(default_factory=lambda: [5, 10])
+    target_shots: List[int] = field(default_factory=lambda: [40, 60])
+    n_students: List[int] = field(default_factory=lambda: [2, 3, 4])
+    teacher_weights: List[float] = field(default_factory=lambda: [2.0, 3.0, 5.0])
+    score_thresholds: List[float] = field(default_factory=lambda: [0.5, 0.6, 0.7])
+    aug_iters: List[int] = field(default_factory=lambda: [3, 4, 6])
+    candidates_per_source: List[int] = field(default_factory=lambda: [4, 8])
+    student_channels: List[int] = field(default_factory=lambda: [32, 64])
+    latent_dims: List[int] = field(default_factory=lambda: [8, 16])
+    teacher_lrs: List[float] = field(default_factory=lambda: [0.001, 0.003])
+    student_lrs: List[float] = field(default_factory=lambda: [0.001, 0.003])
+    student_styles: List[str] = field(default_factory=lambda: ["jitter", "warp", "mixed"])
+    retrain_students: List[int] = field(default_factory=lambda: [0, 1])
 
 @dataclass
 class ProgramConfig:

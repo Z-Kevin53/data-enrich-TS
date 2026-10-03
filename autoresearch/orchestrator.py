@@ -37,19 +37,26 @@ class AutoResearchOrchestrator:
         self._experiment_count = 0; self._start_time = time.time()
 
     def _build_search_space(self):
-        """Map the config's SearchSpace fields to experiment param keys."""
+        """Map the config's SearchSpace fields to experiment param keys.
+
+        The active research object is the TS (Teacher-Student) ensemble
+        augmentation pipeline for few-shot learning (ts_aug_experiment.py).
+        """
         ss = self.config.search_space
         mapping = {
-            "enrich_method": ss.enrich_methods,
-            "seed_ratio": ss.seed_ratios,
-            "enrich_ratio": ss.enrich_ratios,
-            "noise_std": ss.noise_stds,
-            "learning_rate": ss.learning_rates,
-            "batch_size": ss.batch_sizes,
-            "hidden_dim": ss.hidden_dims,
-            "dropout": ss.dropout_rates,
-            "weight_decay": ss.weight_decay,
-            "optimizer": ss.optimizer_types,
+            "shots": ss.shots,
+            "target_shots": ss.target_shots,
+            "n_students": ss.n_students,
+            "teacher_weight": ss.teacher_weights,
+            "score_threshold": ss.score_thresholds,
+            "aug_iters": ss.aug_iters,
+            "candidates_per_source": ss.candidates_per_source,
+            "student_channels": ss.student_channels,
+            "latent_dim": ss.latent_dims,
+            "teacher_lr": ss.teacher_lrs,
+            "student_lr": ss.student_lrs,
+            "student_style": ss.student_styles,
+            "retrain_students": ss.retrain_students,
         }
         space = {k: list(v) for k, v in mapping.items() if v}
         return space or {"learning_rate": [0.001]}
@@ -151,6 +158,17 @@ class AutoResearchOrchestrator:
     def generate_paper(self):
         records = self.tracker.get_all_results(); convergence = self.tracker.get_convergence_data()
         program_dict = self.config.to_dict() if hasattr(self.config, "to_dict") else {}
+        fmt = (self.config.paper_settings or {}).get("format", "markdown")
+        if fmt == "ieee":
+            # IEEE conference-format deliverables (tex + html + SVG figures).
+            # Failures must never break the research loop: fall back to markdown.
+            try:
+                from .ieee_paper import IEEEPaperGenerator
+                out = IEEEPaperGenerator(self.config.paper_settings, self.config).generate(
+                    records, convergence, program_dict)
+                print(f"[PAPER] Generated: {out}")
+            except Exception as e:
+                print(f"[WARN] IEEE paper generation failed: {e!r}")
         paper_content = self.paper_gen.generate_paper(records, convergence, program_dict)
         self.paper_gen.save(paper_content, self.config.paper_output)
         print(f"[PAPER] Generated: {self.config.paper_output}")
