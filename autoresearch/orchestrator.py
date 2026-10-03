@@ -1,4 +1,4 @@
-import os, sys, time, json, subprocess
+import os, sys, time, json, subprocess, math
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict
@@ -24,8 +24,17 @@ class AutoResearchOrchestrator:
         warnings = self.config.validate()
         for w in warnings: print(f"[WARN] {w}")
         self.git.create_branch(self.config.git_branch)
-        self.tracker._write_header()
-        self._best_metric = None; self._experiment_count = 0; self._start_time = time.time()
+        # Do NOT truncate the results file here: on a resumed run the
+        # tracker already loaded the history, and wiping it would lose rows.
+        if not self.tracker.results_path.exists():
+            self.tracker._write_header()
+        self._best_metric = None
+        # Resume the ratchet from history so a restarted run is judged
+        # against the true best, not against nothing.
+        best = self.tracker.get_best()
+        if best is not None and math.isfinite(best.metric_value):
+            self._best_metric = best.metric_value
+        self._experiment_count = 0; self._start_time = time.time()
 
     def _build_search_space(self):
         """Map the config's SearchSpace fields to experiment param keys."""
