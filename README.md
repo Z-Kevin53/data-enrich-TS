@@ -8,6 +8,8 @@
 - **指标**：`val_acc`（higher-is-better），1000 张共享验证集，所有实验一致
 - **框架**：AutoResearch 自动研究循环（生成想法 → 实验 → 保留/丢弃 → 论文）
 - **硬件**：服务器 GPU-0（RTX 2080 Ti），单实验 10–60 秒
+- **任务**：`program_config.yaml` 中 `task:` 切换研究域 ——
+  `image`（CIFAR-100，CNN 生成器）/ `text`（AG News，BiLSTM 序列生成器，`textaug/` 包）
 
 ```
 目录
@@ -195,8 +197,13 @@ data_enrich/
 │   ├── data.py                 # CIFAR-100 few-shot 切片 + 下载/缓存
 │   ├── models.py               # TeacherCNN / StudentNet / ProtoNet
 │   └── pipeline.py             # 训练循环、ensemble_score、run_ts 主循环
+├── textaug/                    # 文本任务核心包（AG News）
+│   ├── data.py                 # 下载/词表/切分/缓存（3 源回退）
+│   ├── models.py               # TextEncoder(BiLSTM)/TeacherText/StudentText/ProtoText
+│   └── pipeline.py             # 文本版 run_ts（token 风格先验 + 集成打分）
 ├── experiments/
-│   ├── ts_aug_experiment.py    # AutoResearch 实验入口
+│   ├── ts_aug_experiment.py    # AutoResearch 实验入口（图像任务）
+│   ├── text_ts_experiment.py   # AutoResearch 实验入口（文本任务）
 │   │                           #   （参数解析 / GPU0 钉扎 / 曲线落盘 / val_acc 输出）
 │   └── enrich_experiment.py    # （旧任务）Spambase 数据增强实验
 ├── autoresearch/               # AutoResearch 框架
@@ -212,7 +219,8 @@ data_enrich/
 │   └── experiment.py           # 实验记录数据结构
 ├── docs/
 │   ├── 01_research_survey.md   # 文献调研（DA/蒸馏/ProtoNet 背景）
-│   └── 02_experimental_design.md # 实验设计（算法 1 完整公式）
+│   ├── 02_experimental_design.md # 实验设计（算法 1 完整公式）
+│   └── 03_text_augmentation_design.md # 文本增强设计（图像→文本迁移映射）
 ├── program_config.yaml         # 目标/指标/搜索空间/约束/论文设置
 ├── run_autoresearch.py         # 本地运行入口
 ├── run_remote.py               # ★ 远程服务器运行入口（sync/run/pull）
@@ -239,6 +247,11 @@ data_enrich/
 | `student_style` | 风格先验 | jitter, warp, mixed |
 | `retrain_students` | 每迭代刷新 Student | 0, 1 |
 
+**文本任务**（`task: text`，`docs/03`）：`student_channels` 替换为
+`seq_len`(48/64)、`embed_dim`(64/128)、`student_hidden`(64/128)；
+`student_style` 替换为 `text_style`(denoise/swap/mixed)；
+`target_shots` 30/50，`candidates_per_source` 2/4，`aug_iters` 2/3/4。
+
 ## 7. 快速开始
 
 ### 远程服务器（推荐，GPU 0）
@@ -262,6 +275,7 @@ python run_remote.py --pull-only            # 只拉结果/论文
 
 ```powershell
 python experiments\ts_aug_experiment.py --params "{\"shots\": 5, \"target_shots\": 40}"
+python experiments\text_ts_experiment.py --params "{\"shots\": 5, \"target_shots\": 30}"
 ```
 
 stdout 最后一行固定为 `val_acc: X.XXXXXX`（框架 evaluator 解析该行）。
@@ -286,7 +300,8 @@ stdout 最后一行固定为 `val_acc: X.XXXXXX`（框架 evaluator 解析该行
 
 - 全链路 `seed=42` 固定：数据切片、模型初始化、生成潜码、DataLoader shuffle；
 - 每个实验的参数指纹 `sha1(params)[:12]` 命名曲线文件，避免覆盖；
-- 基线 B0 只依赖 `shots/seed`，跨实验缓存（`results/baseline_cache.json`）；
+- 基线 B0 只依赖 `shots/seed`（文本版另含 `seq_len`），跨实验缓存
+  （`results/baseline_cache.json` / `baseline_cache_text.json`）；
 - 保留的实验自动 `git commit`（分支 `autoresearch/experiment`），
   仓库历史即"哪些配置被证明有效"的审计轨迹。
 

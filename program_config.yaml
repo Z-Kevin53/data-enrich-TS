@@ -1,10 +1,12 @@
 project_name: data_enrich
-description: TS (Teacher-Student) ensemble data augmentation for few-shot learning on
-  CIFAR-100 (CIFAR-FS style 20-class k-shot benchmark); AutoResearch searches the
-  augmentation pipeline and maximizes downstream ProtoNet validation accuracy
-goal: Maximize validation accuracy of a prototypical-network classifier trained on
-  a TS-augmented few-shot CIFAR-100 dataset (5/10-shot seed grown to 40/60 shots
-  per class by teacher-scored student generators)
+task: text
+description: TS (Teacher-Student) ensemble data augmentation for few-shot learning
+  on AG News (4-class short-text classification); AutoResearch searches the
+  text augmentation pipeline (latent-conditioned BiLSTM generators, token-level
+  style priors) and maximizes downstream prototypical-network validation accuracy
+goal: Maximize validation accuracy of a prototypical-network classifier trained
+  on a TS-augmented few-shot AG News dataset (5/10-shot seed grown to 30/50 shots
+  per class by teacher-scored student sequence generators)
 target_metric: val_acc
 direction: higher
 constraint:
@@ -18,12 +20,11 @@ search_space:
   - 5
   - 10
   target_shots:
-  - 40
-  - 60
+  - 30
+  - 50
   n_students:
   - 2
   - 3
-  - 4
   teacher_weights:
   - 2.0
   - 3.0
@@ -33,15 +34,39 @@ search_space:
   - 0.6
   - 0.7
   aug_iters:
+  - 2
   - 3
   - 4
-  - 6
   candidates_per_source:
+  - 2
   - 4
-  - 8
-  student_channels:
-  - 32
+  seq_lens:
+  - 48
   - 64
+  embed_dims:
+  - 64
+  - 128
+  student_hidden:
+  - 64
+  - 128
+  teacher_hiddens:
+  - 64
+  - 128
+  n_layers:
+  - 1
+  - 2
+  dropouts:
+  - 0.0
+  - 0.2
+  teacher_epochs:
+  - 15
+  - 30
+  z_scales:
+  - 0.75
+  - 1.0
+  batch_sizes:
+  - 16
+  - 32
   latent_dims:
   - 8
   - 16
@@ -51,16 +76,16 @@ search_space:
   student_lrs:
   - 0.001
   - 0.003
-  student_styles:
-  - jitter
-  - warp
+  text_styles:
+  - denoise
+  - swap
   - mixed
   retrain_students:
   - 0
   - 1
-experiment_file: experiments/ts_aug_experiment.py
-results_file: results/results.tsv
-paper_output: papers/generated_paper.md
+experiment_file: experiments/text_ts_experiment.py
+results_file: results/results_text.tsv
+paper_output: papers/generated_paper_text.md
 git_branch: autoresearch/experiment
 research_phases:
 - seed_setup
@@ -69,7 +94,8 @@ research_phases:
 - selection_threshold
 - augmentation_schedule
 paper_settings:
-  title_prefix: 'TS-Aug: Teacher-Student Ensemble Data Augmentation for Few-Shot Learning'
+  title_prefix: 'TS-Aug-Text: Teacher-Student Ensemble Data Augmentation for Few-Shot
+    Text Classification'
   include_ablation: true
   include_analysis: true
-  format: ieee
+  format: markdown

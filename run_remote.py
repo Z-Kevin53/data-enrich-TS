@@ -43,12 +43,25 @@ SYNC_EXCLUDES = [".git", "data", "results", "papers", "__pycache__", "*.pyc", ".
 PULL_DIRS = ["results", "papers"]
 
 
-def ssh_run(remote_cmd, stdin=None, retries=3, retry_wait=5, capture=False):
-    """Run a command on the server; retry on P2P tunnel instability."""
+def ssh_run(remote_cmd, stdin=None, retries=3, retry_wait=5, capture=False,
+            timeout=None):
+    """Run a command on the server; retry on P2P tunnel instability.
+
+    timeout: hard per-attempt wall clock (seconds). The P2P tunnel can wedge
+    individual connections; without a timeout one bad ssh blocks everything.
+    Stream-heavy calls (sync) should pass a large or None timeout.
+    """
     last = None
     for attempt in range(1, retries + 1):
-        last = subprocess.run(SSH + [remote_cmd], stdin=stdin,
-                              capture_output=capture, text=capture)
+        try:
+            last = subprocess.run(SSH + [remote_cmd], stdin=stdin,
+                                  capture_output=capture, text=capture,
+                                  timeout=timeout)
+        except subprocess.TimeoutExpired:
+            print(f"[WARN] ssh attempt {attempt}/{retries} timed out "
+                  f"({timeout}s, tunnel likely wedged); retrying in {retry_wait}s...")
+            time.sleep(retry_wait)
+            continue
         if last.returncode == 0:
             return last
         print(f"[WARN] ssh attempt {attempt}/{retries} failed (rc={last.returncode}); "
@@ -66,7 +79,7 @@ def sync():
     pipe = subprocess.Popen(["tar", "-c", "-f", "-", *exclude_args, "-C", LOCAL_DIR, "."],
                             stdout=subprocess.PIPE)
     proc = ssh_run(f"mkdir -p {REMOTE_DIR} && tar -x -f - -C {REMOTE_DIR}",
-                   stdin=pipe.stdout)
+                   stdin=pipe.stdout, timeout=900)
     pipe.stdout.close()
     pipe.wait()
     if proc.returncode != 0:
@@ -83,28 +96,42 @@ def setup_remote():
         f'if [ ! -e .venv ]; then ln -s {VENV_SRC} .venv; echo "[ENV] venv linked <- {VENV_SRC}"; fi && '
         f'.venv/bin/python -c "{check}"'
     )
-    proc = ssh_run(cmd)
+    proc = ssh_run(cmd, timeout=120)
     if proc.returncode != 0:
         print("[ERROR] remote setup failed")
         sys.exit(1)
 
 
 def _remote_launch(forward_args):
-    """Launch run_autoresearch.py DETACHED on the server (nohup + pid file).
+    """Launch run_autoresearch.py DETACHED on the server (nohup + setsid + pid file).
 
     Detaching makes the job immune to P2P tunnel drops: the run continues on
     the server while we poll short-lived ssh commands.
+
+    Notes:
+      - The braces are REQUIRED: `cd X && nohup ... & echo $! > pid` would
+        background the whole `cd && nohup` list and write the pid file into
+        the wrong directory (bash precedence).
+      - setsid + </dev/null fully detach the job from the ssh session so the
+        launch ssh exits immediately instead of holding the channel open.
+      - The local ssh call has a hard timeout: if the tunnel wedges the
+        launch, we fail fast and keep polling (the job itself is detached).
     """
     suffix = " ".join(shlex.quote(a) for a in forward_args)
     # GPU pinning (physical GPU 0 via nvidia-smi UUID) is done inside
     # ts_aug_experiment.py; an explicit AR_GPU env var can override it.
     remote_cmd = (
         f"cd {REMOTE_DIR} && "
-        f"nohup .venv/bin/python -u run_autoresearch.py {suffix} "
-        f"> remote_run.log 2>&1 & echo $! > remote_run.pid".rstrip()
+        f"{{ nohup setsid .venv/bin/python -u run_autoresearch.py {suffix} "
+        f"> remote_run.log 2>&1 < /dev/null & echo $! > remote_run.pid; }}".rstrip()
     )
     print(f"[RUN] remote (detached): {remote_cmd}")
-    proc = ssh_run(remote_cmd, retries=3, retry_wait=10)
+    try:
+        proc = subprocess.run(SSH + [remote_cmd], timeout=180)
+    except subprocess.TimeoutExpired:
+        print("[ERROR] remote launch ssh timed out (180s); job may still be "
+              "running on the server - continuing to poll.")
+        return 1
     if proc.returncode != 0:
         print(f"[ERROR] remote launch failed (rc={proc.returncode})")
     return proc.returncode
@@ -122,7 +149,7 @@ def _remote_poll(poll_every=30, max_wait=4 * 3600):
             f"cd {REMOTE_DIR} && if [ -f remote_run.pid ] && "
             f"kill -0 $(cat remote_run.pid) 2>/dev/null; then echo RUNNING; "
             f"else echo DONE; fi; tail -3 remote_run.log 2>/dev/null",
-            retries=3, retry_wait=10, capture=True)
+            retries=3, retry_wait=10, capture=True, timeout=60)
         out = proc.stdout or ""
         if proc.returncode == 0:
             status, _, tail = out.rpartition("\n")
@@ -132,7 +159,7 @@ def _remote_poll(poll_every=30, max_wait=4 * 3600):
             if "DONE" in status:
                 # final status: last line of the log
                 p2 = ssh_run(f"tail -15 {REMOTE_DIR}/remote_run.log 2>/dev/null",
-                             retries=2, capture=True)
+                             retries=2, capture=True, timeout=60)
                 print("[FINAL]", (p2.stdout or "").strip())
                 return 0
         time.sleep(poll_every)

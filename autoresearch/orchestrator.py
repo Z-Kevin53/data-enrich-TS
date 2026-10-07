@@ -40,24 +40,52 @@ class AutoResearchOrchestrator:
         """Map the config's SearchSpace fields to experiment param keys.
 
         The active research object is the TS (Teacher-Student) ensemble
-        augmentation pipeline for few-shot learning (ts_aug_experiment.py).
+        augmentation pipeline, in one of two domains (config.task):
+          image -> ts_aug_experiment.py      (CIFAR-100, CNN enc-dec)
+          text  -> text_ts_experiment.py     (AG News, BiLSTM enc-dec)
         """
         ss = self.config.search_space
-        mapping = {
-            "shots": ss.shots,
-            "target_shots": ss.target_shots,
-            "n_students": ss.n_students,
-            "teacher_weight": ss.teacher_weights,
-            "score_threshold": ss.score_thresholds,
-            "aug_iters": ss.aug_iters,
-            "candidates_per_source": ss.candidates_per_source,
-            "student_channels": ss.student_channels,
-            "latent_dim": ss.latent_dims,
-            "teacher_lr": ss.teacher_lrs,
-            "student_lr": ss.student_lrs,
-            "student_style": ss.student_styles,
-            "retrain_students": ss.retrain_students,
-        }
+        task = getattr(self.config, "task", "image")
+        if task == "text":
+            mapping = {
+                "shots": ss.shots,
+                "target_shots": ss.target_shots,
+                "n_students": ss.n_students,
+                "teacher_weight": ss.teacher_weights,
+                "score_threshold": ss.score_thresholds,
+                "aug_iters": ss.aug_iters,
+                "candidates_per_source": ss.candidates_per_source,
+                "seq_len": ss.seq_lens,
+                "embed_dim": ss.embed_dims,
+                "student_hidden": ss.student_hidden,
+                "teacher_hidden": ss.teacher_hiddens,
+                "n_layers": ss.n_layers,
+                "dropout": ss.dropouts,
+                "teacher_epochs": ss.teacher_epochs,
+                "z_scale": ss.z_scales,
+                "batch_size": ss.batch_sizes,
+                "latent_dim": ss.latent_dims,
+                "teacher_lr": ss.teacher_lrs,
+                "student_lr": ss.student_lrs,
+                "text_style": ss.text_styles,
+                "retrain_students": ss.retrain_students,
+            }
+        else:
+            mapping = {
+                "shots": ss.shots,
+                "target_shots": ss.target_shots,
+                "n_students": ss.n_students,
+                "teacher_weight": ss.teacher_weights,
+                "score_threshold": ss.score_thresholds,
+                "aug_iters": ss.aug_iters,
+                "candidates_per_source": ss.candidates_per_source,
+                "student_channels": ss.student_channels,
+                "latent_dim": ss.latent_dims,
+                "teacher_lr": ss.teacher_lrs,
+                "student_lr": ss.student_lrs,
+                "student_style": ss.student_styles,
+                "retrain_students": ss.retrain_students,
+            }
         space = {k: list(v) for k, v in mapping.items() if v}
         return space or {"learning_rate": [0.001]}
 
@@ -77,7 +105,9 @@ class AutoResearchOrchestrator:
             status = self.evaluator.evaluate(metric_value, self._best_metric)
             error = None
         except Exception as e:
-            output = str(e); metric_value = float("inf"); status = "worse"; error = str(e)
+            output = str(e); metric_value = float("inf"); status = "worse"
+            # keep the TSV one-record-per-line: flatten multi-line tracebacks
+            error = str(e).replace("\n", " | ")[:500]
         elapsed = time.time() - start
         record = ExperimentRecord(self._experiment_count + 1, datetime.now().isoformat(),
             experiment_name, metric_value, self.config.target_metric, experiment_params,
@@ -96,8 +126,20 @@ class AutoResearchOrchestrator:
             output = result.stdout + result.stderr
             if result.returncode != 0: raise RuntimeError(f"Failed: {output[-500:]}")
             return output
-        except (subprocess.TimeoutExpired, FileNotFoundError, RuntimeError):
-            return self._simulate_experiment(params)
+        except (subprocess.TimeoutExpired, FileNotFoundError, RuntimeError) as e:
+            # NEVER fall back to simulated metrics for a real experiment: that
+            # would fabricate data. Record the failure instead (the caller's
+            # except block logs it with metric=inf and the error text).
+            tail = ""
+            if isinstance(e, subprocess.TimeoutExpired) and e.output:
+                out = e.output
+                if isinstance(out, bytes):
+                    out = out.decode("utf-8", "replace")
+                tail = out[-300:]
+            print(f"[ERROR] experiment subprocess failed ({type(e).__name__}); "
+                  f"recording as failure, NOT simulating. detail: {str(e)[:300]} {tail}",
+                  flush=True)
+            raise
 
     def _simulate_experiment(self, params):
         import random

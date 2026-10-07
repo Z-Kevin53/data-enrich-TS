@@ -39,6 +39,16 @@ class SearchSpace:
     student_lrs: List[float] = field(default_factory=lambda: [0.001, 0.003])
     student_styles: List[str] = field(default_factory=lambda: ["jitter", "warp", "mixed"])
     retrain_students: List[int] = field(default_factory=lambda: [0, 1])
+    # TS text augmentation (AG News) architecture dimensions
+    seq_lens: List[int] = field(default_factory=lambda: [48, 64])
+    embed_dims: List[int] = field(default_factory=lambda: [64, 128])
+    student_hidden: List[int] = field(default_factory=lambda: [64, 128])
+    teacher_hiddens: List[int] = field(default_factory=lambda: [64, 128])
+    n_layers: List[int] = field(default_factory=lambda: [1, 2])
+    dropouts: List[float] = field(default_factory=lambda: [0.0, 0.2])
+    teacher_epochs: List[int] = field(default_factory=lambda: [15, 30])
+    z_scales: List[float] = field(default_factory=lambda: [0.75, 1.0])
+    text_styles: List[str] = field(default_factory=lambda: ["denoise", "swap", "mixed"])
 
 @dataclass
 class ProgramConfig:
@@ -53,6 +63,7 @@ class ProgramConfig:
     results_file: str = "results/results.tsv"
     paper_output: str = "papers/generated_paper.md"
     git_branch: str = "autoresearch/experiment"
+    task: str = "image"   # "image" (CIFAR-100) or "text" (AG News)
     research_phases: List[str] = field(default_factory=lambda: ["seed_setup", "enrichment_search", "hyperparameter", "regularization", "optimization"])
     paper_settings: dict = field(default_factory=lambda: {"title_prefix": "AutoResearch: Data Enrichment", "include_ablation": True, "include_analysis": True, "format": "markdown"})
 
